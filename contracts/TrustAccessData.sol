@@ -19,7 +19,7 @@ contract TrustAccessData {
     // (_residentAddress => _apartmentAddress)
     mapping(address => uint[]) public residentToApartmentsMap;
 
-    mapping(uint => Appointment) public appointments;
+    mapping(bytes32 => Appointment) public appointments;
 
 
     event ApartmentRegistered(
@@ -30,12 +30,8 @@ contract TrustAccessData {
         address _residentAddress, 
         string _name 
     );
-    event AppointmentMade (
-        address _residentAddress, 
-        address _apartmentAddress, 
-        address _visitorAddress, 
-        string startTime, 
-        string endTime 
+    event AppointmentMade ( 
+        Appointment appointment 
     );
     event ResidentAssignedToApartment(
         address _residentAddress,
@@ -63,6 +59,11 @@ contract TrustAccessData {
         _;
     }
 
+    modifier isSender( address _receivedSenderAddress ) {
+        require(_receivedSenderAddress == msg.sender, "Received address must be equal to sender address");
+        _;
+    }
+
     modifier apartmentBelongsToResident(
         address _residentAddress, 
         address _apartmentAddress
@@ -70,13 +71,17 @@ contract TrustAccessData {
         uint[] memory apartmentsBelongingToResident = residentToApartmentsMap[_residentAddress];
         bool apartmentFound = false;
         uint apartmentId = apartments[_apartmentAddress].id;
-        uint i;
+        uint len = apartmentsBelongingToResident.length;
 
 
-        for(i=0;i < apartmentsBelongingToResident.length; i++){
+        for(uint i=0;i < len;){
             if(apartmentsBelongingToResident[i] == apartmentId){
                 apartmentFound = true;
                 break;
+            }
+
+            unchecked {
+                ++i;
             }
         }
         require(apartmentFound, "Apartment doesnt to belong to resident");
@@ -226,25 +231,32 @@ contract TrustAccessData {
         residentExists( _residentAddress )
         apartmentExists( _apartmentAddress )
         apartmentBelongsToResident( _residentAddress, _apartmentAddress )
+         
         returns(bool success)
-    {
+    { 
 
-        Apartment memory apartment = apartments[_apartmentAddress];
-
-        appointments[appointmentCount].residentAddress =  _residentAddress;
-        appointments[appointmentCount].apartmentId =  apartment.id;
-        appointments[appointmentCount].visitorAddress =  _visitorAddress;
-        appointments[appointmentCount].status =  AppointmentStatus.Active;
-        appointments[appointmentCount].startTime = _startTime;
-        appointments[appointmentCount].endTime = _endTime;
-
-        emit AppointmentMade(
-            _residentAddress, 
-            _apartmentAddress, 
-            _visitorAddress, 
-            _startTime, 
-            _endTime 
+        bytes32 appointmentId = keccak256(
+            abi.encodePacked(
+                _residentAddress,
+                _apartmentAddress,
+                _visitorAddress,
+                _startTime,
+                _endTime
+            )
         );
+
+        appointments[appointmentId].residentAddress =  _residentAddress;
+        appointments[appointmentId].apartmentId =  apartments[_apartmentAddress].id;
+        appointments[appointmentId].visitorAddress =  _visitorAddress;
+        appointments[appointmentId].status =  AppointmentStatus.Active;
+        appointments[appointmentId].startTime = _startTime;
+        appointments[appointmentId].endTime = _endTime;
+
+        emit AppointmentMade( 
+            appointments[appointmentId]
+        );
+
+        appointmentCount +=1;
 
         return true;
     }
