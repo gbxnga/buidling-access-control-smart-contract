@@ -59,5 +59,20 @@ contract('TrustAccess', (accounts) => {
  
  
   });
+
+  it('resident can make appointment', async () => {
+    const trustAccessDataInstance = await TrustAccessData.deployed(); 
+
+    let appointment = await trustAccessDataInstance.makeAppointment(
+        accounts[3],
+        accounts[1],
+        accounts[6],
+        "2345",
+        "9876"
+    );
+    console.log({ appointment });
+ 
+ 
+  });
   
 });

@@ -7,6 +7,7 @@ contract TrustAccessData {
 
     uint apartmentCount; 
     uint residentCount; 
+    uint appointmentCount; 
 
     constructor() {
         contactOwner = msg.sender;
@@ -18,9 +19,28 @@ contract TrustAccessData {
     // (_residentAddress => _apartmentAddress)
     mapping(address => uint[]) public residentToApartmentsMap;
 
+    mapping(uint => Appointment) public appointments;
 
-    event ApartmentRegistered(address _apartmentAddress, string _name );
-    event ResidentRegistered( address _ownerAddress, string _name );
+
+    event ApartmentRegistered(
+        address _apartmentAddress, 
+        string _name 
+    );
+    event ResidentRegistered( 
+        address _residentAddress, 
+        string _name 
+    );
+    event AppointmentMade (
+        address _residentAddress, 
+        address _apartmentAddress, 
+        address _visitorAddress, 
+        string startTime, 
+        string endTime 
+    );
+    event ResidentAssignedToApartment(
+        address _residentAddress,
+        address _apartmentAddress
+    );
 
 
     modifier apartmentExists(address _apartmentAddress) {
@@ -40,6 +60,26 @@ contract TrustAccessData {
 
     modifier residentDoesntExist( address _residentAddress ) {
         require(!residents[_residentAddress].isValue, "Resident with address already exists");
+        _;
+    }
+
+    modifier apartmentBelongsToResident(
+        address _residentAddress, 
+        address _apartmentAddress
+    ) {
+        uint[] memory apartmentsBelongingToResident = residentToApartmentsMap[_residentAddress];
+        bool apartmentFound = false;
+        uint apartmentId = apartments[_apartmentAddress].id;
+        uint i;
+
+
+        for(i=0;i < apartmentsBelongingToResident.length; i++){
+            if(apartmentsBelongingToResident[i] == apartmentId){
+                apartmentFound = true;
+                break;
+            }
+        }
+        require(apartmentFound, "Apartment doesnt to belong to resident");
         _;
     }
      
@@ -80,7 +120,10 @@ contract TrustAccessData {
         );
     }
 
-    function registerApartment( address _apartmentAddress, string memory _name ) 
+    function registerApartment( 
+        address _apartmentAddress, 
+        string memory _name 
+    ) 
         public 
         apartmentDoesntExist(_apartmentAddress)
         returns(Apartment memory apartment)
@@ -119,7 +162,10 @@ contract TrustAccessData {
         );
     }
 
-    function registerResident( address _residentAddress, string memory _name ) 
+    function registerResident( 
+        address _residentAddress, 
+        string memory _name 
+    ) 
         public 
         residentDoesntExist(_residentAddress)
         returns(Resident memory resident)
@@ -148,7 +194,10 @@ contract TrustAccessData {
         return residentToApartmentsMap[_residentAddress];
     }
 
-    function assignResidentToApartment ( address _residentAddress, address _apartmentAddress )
+    function assignResidentToApartment ( 
+        address _residentAddress, 
+        address _apartmentAddress 
+    )
         public
         residentExists( _residentAddress )
         apartmentExists( _apartmentAddress )
@@ -158,13 +207,59 @@ contract TrustAccessData {
 
         residentToApartmentsMap[_residentAddress].push(apartment.id);
 
+        emit ResidentAssignedToApartment(
+            _residentAddress,
+            _apartmentAddress
+        );
+
         return residentToApartmentsMap[_residentAddress];
+    }
+
+    function makeAppointment( 
+        address _residentAddress, 
+        address _apartmentAddress, 
+        address _visitorAddress, 
+        string memory _startTime, 
+        string memory _endTime 
+    )
+        public
+        residentExists( _residentAddress )
+        apartmentExists( _apartmentAddress )
+        apartmentBelongsToResident( _residentAddress, _apartmentAddress )
+        returns(bool success)
+    {
+
+        Apartment memory apartment = apartments[_apartmentAddress];
+
+        appointments[appointmentCount].residentAddress =  _residentAddress;
+        appointments[appointmentCount].apartmentId =  apartment.id;
+        appointments[appointmentCount].visitorAddress =  _visitorAddress;
+        appointments[appointmentCount].status =  AppointmentStatus.Active;
+        appointments[appointmentCount].startTime = _startTime;
+        appointments[appointmentCount].endTime = _endTime;
+
+        emit AppointmentMade(
+            _residentAddress, 
+            _apartmentAddress, 
+            _visitorAddress, 
+            _startTime, 
+            _endTime 
+        );
+
+        return true;
     }
 
     enum ApartmentStatus { 
         Inactive,
         Active,
         Suspended
+    }
+
+    enum AppointmentStatus { 
+        Inactive,
+        Active,
+        CheckedIn,
+        CheckedOut
     }
 
     enum ApartmentResidentsStatus {
@@ -193,8 +288,12 @@ contract TrustAccessData {
         ApartmentResidentsStatus status; 
     }
 
-    struct Appointments {
-        address resident;
-        address visitor;
+    struct Appointment {
+        address residentAddress;
+        uint apartmentId;
+        address visitorAddress;
+        AppointmentStatus status;
+        string startTime;
+        string endTime;
     }
 }
