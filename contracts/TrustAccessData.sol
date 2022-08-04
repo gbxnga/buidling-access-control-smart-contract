@@ -5,9 +5,9 @@ contract TrustAccessData {
     address private contactOwner;
     bool private operational = true;
 
-    uint apartmentCount; 
-    uint residentCount; 
-    uint appointmentCount; 
+    uint public apartmentCount; 
+    uint public residentCount; 
+    uint public appointmentCount; 
 
     constructor() {
         contactOwner = msg.sender;
@@ -16,8 +16,8 @@ contract TrustAccessData {
     mapping(address => Apartment) public apartments;
     mapping(address => Resident) public residents;
 
-    // (_residentAddress => _apartmentAddress)
-    mapping(address => uint[]) public residentToApartmentsMap;
+    // (_residentAddress => _apartmentAddress[])
+    mapping(address => address[]) public residentToApartmentsMap;
 
     mapping(bytes32 => Appointment) public appointments;
 
@@ -31,7 +31,11 @@ contract TrustAccessData {
         string _name 
     );
     event AppointmentMade ( 
-        Appointment appointment 
+        bytes32 appointmentId, 
+        address _residentAddress,
+        address _apartmentAddress,
+        address _visitorAddress, 
+        string _time 
     );
     event ResidentAssignedToApartment(
         address _residentAddress,
@@ -68,14 +72,13 @@ contract TrustAccessData {
         address _residentAddress, 
         address _apartmentAddress
     ) {
-        uint[] memory apartmentsBelongingToResident = residentToApartmentsMap[_residentAddress];
-        bool apartmentFound = false;
-        uint apartmentId = apartments[_apartmentAddress].id;
-        uint len = apartmentsBelongingToResident.length;
+        address[] memory apartmentsBelongingToResident = residentToApartmentsMap[_residentAddress];
+        bool apartmentFound = false; 
+      
 
 
-        for(uint i=0;i < len;){
-            if(apartmentsBelongingToResident[i] == apartmentId){
+        for(uint8 i=0;i < apartmentsBelongingToResident.length;){
+            if(apartmentsBelongingToResident[i] == _apartmentAddress){
                 apartmentFound = true;
                 break;
             }
@@ -193,7 +196,7 @@ contract TrustAccessData {
         view
         residentExists( _residentAddress )
         returns(
-            uint[] memory residentApartments
+            address[] memory residentApartments
         )
     {
         return residentToApartmentsMap[_residentAddress];
@@ -206,11 +209,10 @@ contract TrustAccessData {
         public
         residentExists( _residentAddress )
         apartmentExists( _apartmentAddress )
-        returns(uint[] memory residentApartments)
-    { 
-        Apartment memory apartment = apartments[_apartmentAddress];
+        returns(address[] memory residentApartments)
+    {  
 
-        residentToApartmentsMap[_residentAddress].push(apartment.id);
+        residentToApartmentsMap[_residentAddress].push(_apartmentAddress);
 
         emit ResidentAssignedToApartment(
             _residentAddress,
@@ -220,45 +222,75 @@ contract TrustAccessData {
         return residentToApartmentsMap[_residentAddress];
     }
 
-    function makeAppointment( 
-        address _residentAddress, 
+    function makeAppointment(  
         address _apartmentAddress, 
         address _visitorAddress, 
-        string memory _startTime, 
-        string memory _endTime 
+        string memory _time
     )
         public
-        residentExists( _residentAddress )
+        residentExists( msg.sender )
         apartmentExists( _apartmentAddress )
-        apartmentBelongsToResident( _residentAddress, _apartmentAddress )
+        apartmentBelongsToResident( msg.sender , _apartmentAddress )
          
-        returns(bool success)
+        returns(bytes32 _appointmentId, string memory time )
     { 
 
         bytes32 appointmentId = keccak256(
-            abi.encodePacked(
-                _residentAddress,
+            abi.encode( 
                 _apartmentAddress,
                 _visitorAddress,
-                _startTime,
-                _endTime
+                _time
             )
         );
 
-        appointments[appointmentId].residentAddress =  _residentAddress;
-        appointments[appointmentId].apartmentId =  apartments[_apartmentAddress].id;
-        appointments[appointmentId].visitorAddress =  _visitorAddress;
-        appointments[appointmentId].status =  AppointmentStatus.Active;
-        appointments[appointmentId].startTime = _startTime;
-        appointments[appointmentId].endTime = _endTime;
+        Appointment storage appointment = appointments[appointmentId];
+
+        appointment.id = appointmentId;
+        appointment.residentAddress =  msg.sender;
+        appointment.apartmentAddress =  _apartmentAddress ;
+        appointment.visitorAddress =  _visitorAddress;
+        appointment.status =  AppointmentStatus.Active;
+        appointment.time = _time; 
+        appointment.isValue = true;
+
+        appointmentCount++;
+
+        require(appointments[appointmentId].isValue, "Appoint was not created");
 
         emit AppointmentMade( 
-            appointments[appointmentId]
+            appointmentId,
+            msg.sender,
+            _apartmentAddress,
+            _visitorAddress, 
+            _time
+        );
+ 
+
+        return (appointmentId, _time);
+    }
+
+    function verifyAppointment( 
+        address _visitorAddress,
+        string memory _time,
+        address _apartmentAddress
+    )
+        public
+        view
+        residentExists( msg.sender )
+        returns (bool valid)
+    { 
+        bytes32 appointmentId = keccak256(
+            abi.encode( 
+                _apartmentAddress,
+                _visitorAddress,
+                _time
+            )
         );
 
-        appointmentCount +=1;
+        // require(appointments[_appointmentId].isValue, "Appointment does not exist");
+        Appointment storage appointment = appointments[appointmentId];
 
-        return true;
+        return  appointment.visitorAddress == _visitorAddress;
     }
 
     enum ApartmentStatus { 
@@ -301,11 +333,12 @@ contract TrustAccessData {
     }
 
     struct Appointment {
+        bytes32 id;
         address residentAddress;
-        uint apartmentId;
+        address apartmentAddress;
         address visitorAddress;
         AppointmentStatus status;
-        string startTime;
-        string endTime;
+        string time; 
+        bool isValue;
     }
 }
